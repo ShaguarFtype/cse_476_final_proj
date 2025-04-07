@@ -1,0 +1,51 @@
+# Model files
+models/llama-3.2-3b-base/model-*.safetensors
+models/llama-3.2-3b-base/model.safetensors.index.json
+models/llama-3.2-3b-base/original/
+
+# Evaluation results
+eval_results_*/
+
+# Slurm output files
+slurm-*.out
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
