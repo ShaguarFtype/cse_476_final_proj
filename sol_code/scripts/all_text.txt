@@ -1,0 +1,249 @@
+from huggingface_hub import snapshot_download
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+def download_model():
+    # Get token from environment variable
+    hf_token = os.getenv("HF_TOKEN")
+    if not hf_token:
+        print("Warning: HF_TOKEN environment variable not found. Model download may fail if authentication is required.")
+    
+    model_id = "meta-llama/Llama-3.2-3B"
+    cache_dir = os.path.join(os.getcwd(), "models", "llama-3.2-3b-base")
+
+    print(f"Downloading {model_id} to {cache_dir}...")
+    snapshot_download(
+        repo_id=model_id,
+        cache_dir=cache_dir,
+        local_dir=cache_dir,
+        token=hf_token
+    )
+    print("Download complete!")
+
+if __name__ == "__main__":
+    download_model()
+import datasets
+import json
+import os
+
+def prepare_datasets():
+    # Directory for saving datasets
+    os.makedirs("data/processed", exist_ok=True)
+    
+    # Load datasets from Hugging Face
+    alpaca_dataset = datasets.load_dataset("tatsu-lab/alpaca")
+    
+    # Process datasets into a unified format
+    processed_data = []
+    
+    # Process Alpaca data
+    for item in alpaca_dataset["train"]:
+        processed_data.append({
+            "instruction": item["instruction"],
+            "input": item["input"] if item["input"] else "",
+            "output": item["output"],
+            "source": "alpaca"
+        })
+    
+    # Save processed data
+    with open("data/processed/instruction_dataset.json", "w") as f:
+        json.dump(processed_data, f, indent=2)
+    
+    print(f"Saved {len(processed_data)} processed examples")
+
+if __name__ == "__main__":
+    prepare_datasets()
+import json
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import time
+
+def test_model():
+    # Load the fine-tuned model and tokenizer
+    model_path = "models/llama-3.2-3b-ft"
+    
+    print(f"Loading model from {model_path}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        load_in_4bit=True
+    )
+    print("Model loaded successfully!")
+    
+    # Test queries
+    test_queries = [
+        "Explain how to implement a binary search algorithm",
+        "What are the advantages and disadvantages of transformer models?",
+        "Write a short story about a robot learning to paint",
+        "Summarize the key ideas of reinforcement learning"
+    ]
+    
+    results = []
+    
+    for query in test_queries:
+        print(f"\nTesting query: {query}")
+        
+        # Format the query as instruction
+        formatted_prompt = f"### Instruction:\n{query}\n\n### Response:\n"
+        
+        # Generate response
+        inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
+        
+        start_time = time.time()
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                temperature=0.7,
+                top_p=0.9,
+                num_return_sequences=1
+            )
+        end_time = time.time()
+        
+        # Decode and extract only the response part
+        full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = full_response[len(formatted_prompt):]
+        
+        # Calculate time taken
+        time_taken = end_time - start_time
+        
+        print(f"Response: {response[:100]}...")
+        print(f"Time taken: {time_taken:.2f} seconds")
+        
+        results.append({
+            "query": query,
+            "response": response,
+            "time_taken_seconds": time_taken
+        })
+    
+    # Save results
+    with open("data/test_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    
+    print("\nTest results saved to data/test_results.json")
+
+if __name__ == "__main__":
+    test_model()
+import os
+import json
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from peft import LoraConfig, get_peft_model
+from trl import SFTTrainer
+import datasets
+
+def main():
+    # Load configuration
+    with open("configs/base_config.json", "r") as f:
+        config = json.load(f)
+    
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        config["model_id"],
+        cache_dir=config["model_path"]
+    )
+    tokenizer.pad_token = tokenizer.eos_token
+    
+    # Load model
+    model = AutoModelForCausalLM.from_pretrained(
+        config["model_id"],
+        cache_dir=config["model_path"],
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        load_in_4bit=True
+    )
+    
+    # Configure LoRA
+    lora_config = LoraConfig(
+        r=config["lora"]["r"],
+        lora_alpha=config["lora"]["lora_alpha"],
+        target_modules=config["lora"]["target_modules"],
+        lora_dropout=config["lora"]["lora_dropout"],
+        bias=config["lora"]["bias"],
+        task_type=config["lora"]["task_type"]
+    )
+    
+    model = get_peft_model(model, lora_config)
+    
+    # Load dataset
+    with open("data/processed/instruction_dataset.json", "r") as f:
+        data = json.load(f)
+    
+    # Format data for training
+    def format_instruction(example):
+        instruction = example["instruction"]
+        input_text = example["input"]
+        output = example["output"]
+        
+        if input_text:
+            prompt = f"### Instruction:\n{instruction}\n\n### Input:\n{input_text}\n\n### Response:\n"
+        else:
+            prompt = f"### Instruction:\n{instruction}\n\n### Response:\n"
+            
+        return {
+            "prompt": prompt,
+            "response": output
+        }
+    
+    formatted_data = [format_instruction(item) for item in data]
+    train_dataset = datasets.Dataset.from_list(formatted_data)
+    
+    # Training arguments
+    training_args = TrainingArguments(
+        output_dir="models/llama-3.2-3b-ft",
+        per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
+        gradient_accumulation_steps=config["training"]["gradient_accumulation_steps"],
+        learning_rate=config["training"]["learning_rate"],
+        num_train_epochs=config["training"]["num_train_epochs"],
+        save_steps=500,
+        logging_steps=100,
+        fp16=True,
+    )
+    
+    # Set up trainer
+    trainer = SFTTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        tokenizer=tokenizer,
+        max_seq_length=config["training"]["max_seq_length"],
+        packing=True
+    )
+    
+    # Train model
+    trainer.train()
+    
+    # Save model
+    trainer.save_model("models/llama-3.2-3b-ft")
+    tokenizer.save_pretrained("models/llama-3.2-3b-ft")
+    
+    print("Model training complete and saved!")
+
+if __name__ == "__main__":
+    main()
+#!/bin/bash
+#SBATCH -N 1                # number of nodes
+#SBATCH -c 8                # number of cores
+#SBATCH -t 0-08:00:00       # time in d-hh:mm:ss
+#SBATCH --mem=32G
+#SBATCH --gres=gpu:1
+#SBATCH -p general          # partition
+#SBATCH -q class            # QOS
+#SBATCH -A class_asu101spring2025
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user="your_email@asu.edu"
+#SBATCH --export=NONE       # Purge the job-submitting shell environment
+
+# Load modules
+module load mamba/latest
+module load cuda-12.5.0-gcc-12.1.0
+source activate llama_assistant
+
+# Run training
+cd "$(dirname "$0")/.."
+python scripts/train.py
