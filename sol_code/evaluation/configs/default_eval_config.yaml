@@ -1,0 +1,11 @@
+# Default evaluation configuration
+temperature: 0.7
+max_new_tokens: 512
+top_p: 0.9
+format_type: "instruction"  # 'instruction' or 'chat'
+log_full_responses: true
+metrics:
+  - accuracy  # Exact match of final answer
+  # Additional potential metrics:
+  # - partial_match  # Partial matches (for future)
+  # - reasoning_score  # Score for reasoning (for future) 

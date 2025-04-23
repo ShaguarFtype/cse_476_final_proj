@@ -22,7 +22,7 @@ def print_header():
     """Print an elegant, minimal ASCII art header."""
     header = """
 ╭───────────────────────────────────────────╮
-│           LLAMA 3.2 MODEL CLIENT          │
+│           LLAMA MODEL CLIENT               │
 ╰───────────────────────────────────────────╯
 """
     print(header)
@@ -87,16 +87,47 @@ def clean_response(response, query):
     logging.info(f"Cleaned response, length: {len(response)} characters")
     return response
 
-def query_model(query, api_url="http://localhost:5000", timeout=120):
+def list_models(api_url="http://localhost:5000"):
+    """List all available models."""
+    try:
+        response = requests.get(f"{api_url}/models")
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"Status code: {response.status_code}", "models": []}
+    except Exception as e:
+        return {"error": str(e), "models": []}
+
+def switch_model(model_id, api_url="http://localhost:5000"):
+    """Switch to a specific model."""
+    try:
+        response = requests.post(
+            f"{api_url}/models/switch",
+            json={"model_id": model_id}
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"Status code: {response.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+def query_model(query, model_id=None, api_url="http://localhost:5000", timeout=120):
     """Send a query to the model API and return the response."""
     logging.info(f"Sending query to {api_url}: '{query}'")
     try:
         print(f"Sending query to {api_url}...")
         start_time = time.time()
 
+        # Prepare request data
+        request_data = {"query": query}
+        if model_id:
+            request_data["model_id"] = model_id
+            logging.info(f"Using model_id: {model_id}")
+
         response = requests.post(
             f"{api_url}/generate",
-            json={"query": query},
+            json=request_data,
             timeout=timeout
         )
 
@@ -106,13 +137,14 @@ def query_model(query, api_url="http://localhost:5000", timeout=120):
         if response.status_code != 200:
             error_msg = f"Error: {response.status_code} - {response.text}"
             logging.error(error_msg)
-            return error_msg, 0, 0
+            return error_msg, 0, 0, "unknown"
 
         result = response.json()
         model_time = result.get("response_time_seconds", 0)
         network_time = total_time - model_time
+        model_used = result.get("model", "unknown")
         
-        logging.info(f"Model processing time: {model_time:.2f}s, Network time: {network_time:.2f}s")
+        logging.info(f"Model: {model_used}, Processing time: {model_time:.2f}s, Network time: {network_time:.2f}s")
 
         # Clean up the response text
         raw_response = result["response"]
@@ -129,15 +161,15 @@ def query_model(query, api_url="http://localhost:5000", timeout=120):
             logging.warning(warning_msg)
             model_response = f"{model_response}\n\n[Note: The model generated a very short response. You may want to try rephrasing your query.]"
         
-        return model_response, model_time, network_time
+        return model_response, model_time, network_time, model_used
     except requests.exceptions.Timeout:
         error_msg = f"Error: Request timed out after {timeout} seconds"
         logging.error(error_msg)
-        return error_msg, 0, 0
+        return error_msg, 0, 0, "unknown"
     except Exception as e:
         error_msg = f"Error: {e}"
         logging.error(error_msg)
-        return error_msg, 0, 0
+        return error_msg, 0, 0, "unknown"
 
 def check_health(api_url="http://localhost:5000", timeout=10):
     """Check if the API is healthy and responsive."""
@@ -190,31 +222,28 @@ def interactive_mode(api_url="http://localhost:5000", timeout=120):
     print_header()
     print("Interactive Mode | Type 'exit' to end the session")
     print("                 | Type 'clear' to clear the screen")
+    print("                 | Type 'models' to list available models")
+    print("                 | Type 'switch <model_id>' to switch models")
     print_divider()
 
     try:
         is_healthy, health_data = check_health(api_url)
         if is_healthy:
-            model_info = health_data.get('model', 'Unknown')
+            model_info = health_data.get('model', 'unknown')
             print(f"Connected to {model_info}")
             logging.info(f"Connected to {model_info}")
-            if 'device' in health_data:
-                device_info = health_data['device']
-                print(f"Running on {device_info}")
-                logging.info(f"Running on {device_info}")
         else:
-            warning_msg = f"Warning: API check failed - {health_data.get('error', 'Unknown error')}"
-            print(warning_msg)
-            logging.warning(warning_msg)
+            print(f"Warning: API health check failed: {health_data.get('error', 'Unknown error')}")
+            logging.warning(f"API health check failed: {health_data}")
     except Exception as e:
-        warning_msg = f"Warning: Health check failed - {e}"
-        print(warning_msg)
-        logging.warning(warning_msg)
-
+        print(f"Warning: Could not check API health: {e}")
+        logging.error(f"Error checking API health: {e}")
+    
     print_divider()
     print("Enter your query:")
 
-    query_count = 0
+    current_model_id = None  # Track the current model
+    
     while True:
         try:
             user_input = input("\n> ")
@@ -226,52 +255,83 @@ def interactive_mode(api_url="http://localhost:5000", timeout=120):
                 break
             
             if user_input.lower() == "clear":
-                logging.info("Screen cleared by user")
                 clear_screen()
                 print_header()
                 print("Interactive Mode | Type 'exit' to end the session")
                 print("                 | Type 'clear' to clear the screen")
+                print("                 | Type 'models' to list available models")
+                print("                 | Type 'switch <model_id>' to switch models")
                 print_divider()
                 continue
             
-            # Skip empty input
-            if not user_input.strip():
-                logging.info("Empty input detected, skipping")
+            if user_input.lower() == "models":
+                # List available models
+                models_info = list_models(api_url)
+                if "error" in models_info:
+                    print(f"Error listing models: {models_info['error']}")
+                    continue
+                
+                current_model = models_info.get("current_model", "base")
+                print(f"\nCurrent model: {current_model}")
+                print("\nAvailable models:")
+                models = models_info.get("models", [])
+                
+                if not models:
+                    print("  No models available. Using base model.")
+                
+                for idx, model in enumerate(models):
+                    print(f"  {idx+1}. {model['model_id']} - {model['description']}")
+                    if "metrics" in model and model["metrics"]:
+                        print(f"     Metrics: {', '.join([f'{k}: {v}' for k, v in model['metrics'].items()])}")
+                
+                print("\nTo switch models, type 'switch <model_id>' or 'switch base'")
                 continue
             
-            # Get a suggested rewrite for better results
-            suggestion = suggest_rewrite(user_input)
-            if suggestion and len(user_input) < 20:
-                print(f"\nSuggestion: You might get better results with:\n> {suggestion}")
-                print("\nUse this suggestion? (y/n)")
-                use_suggestion = input("> ").lower()
-                logging.info(f"User response to suggestion: '{use_suggestion}'")
-                if use_suggestion.startswith('y'):
-                    user_input = suggestion
+            if user_input.lower().startswith("switch "):
+                # Switch to a different model
+                model_id = user_input[7:].strip()
+                if model_id.lower() == "base":
+                    model_id = None  # None represents the base model
+                
+                print(f"Switching to model: {model_id or 'base'}...")
+                result = switch_model(model_id, api_url)
+                
+                if "error" in result:
+                    print(f"Error switching models: {result['error']}")
+                else:
+                    print(f"Successfully switched to model: {result['model']}")
+                    current_model_id = model_id
+                
+                continue
+            
+            if not user_input.strip():
+                continue
+            
+            # Regular query processing
+            improved_query = suggest_rewrite(user_input)
+            if improved_query:
+                print(f"\nSuggested improved query: {improved_query}")
+                print("Press Enter to use this suggestion or type 'n' to use your original query.")
+                choice = input().strip().lower()
+                if choice != 'n':
+                    user_input = improved_query
                     print(f"\nUsing: {user_input}")
-                    logging.info(f"Using suggested query: '{user_input}'")
-
-            query_count += 1
-            logging.info(f"Processing query #{query_count}")
-            print("\nGenerating response...")
-            response, model_time, network_time = query_model(user_input, api_url, timeout)
-
-            print("\nResponse:")
+            
+            # Include the current model_id in the query if set
+            response, model_time, network_time, model_used = query_model(user_input, current_model_id, api_url, timeout)
+            
             print_divider()
+            print(f"Response from {model_used} (took {model_time:.2f}s):")
             print(response)
             print_divider()
-            total_time = model_time + network_time
-            print(f"Time: {model_time:.2f}s (model) + {network_time:.2f}s (network) = {total_time:.2f}s total")
-            logging.info(f"Response displayed, total time: {total_time:.2f}s")
-
+            
         except KeyboardInterrupt:
-            logging.info("Session interrupted by user (KeyboardInterrupt)")
-            print("\nSession ended.")
+            logging.info("Session interrupted with keyboard shortcut")
+            print("\nKeyboard interrupt received. Session ended.")
             break
         except Exception as e:
-            error_msg = f"Error: {e}"
-            print(error_msg)
-            logging.error(f"Exception in interactive mode: {e}")
+            logging.error(f"Error in interactive session: {e}")
+            print(f"Error: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Client for the Llama-3.2-3B API")
@@ -303,7 +363,7 @@ def main():
         print_header()
         print(f"Query: {args.query}")
         print_divider()
-        response, model_time, network_time = query_model(args.query, args.api_url, args.timeout)
+        response, model_time, network_time, model_used = query_model(args.query, None, args.api_url, args.timeout)
 
         print("\nResponse:")
         print_divider()
@@ -324,6 +384,7 @@ def main():
                         "model_time": model_time,
                         "network_time": network_time,
                         "total_time": model_time + network_time,
+                        "model_used": model_used,
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
                     }
                     json.dump(output, f, indent=2)

@@ -1,0 +1,11 @@
+model_id: "reasoning-enhanced"
+description: "Model fine-tuned with chain-of-thought reasoning tasks"
+base_model_path: "models/base/llama-3.2-3b-base"
+output_dir: "models/variants/reasoning-enhanced"
+dataset_path: "data/processed/reasoning_instruction.json"
+format_type: "instruction"
+batch_size: 1
+gradient_accumulation: 8
+learning_rate: 2e-5
+epochs: 3
+max_length: 768 

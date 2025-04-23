@@ -1,14 +1,14 @@
 #!/bin/bash
 #SBATCH -N 1                # number of nodes
 #SBATCH -c 4                # number of cores
-#SBATCH -t 0-02:00:00       # time in d-hh:mm:ss
-#SBATCH --mem=16G
-#SBATCH --gres=gpu:1
+#SBATCH -t 0-12:00:00       # time in d-hh:mm:ss
+#SBATCH --mem=16G           # memory required
+#SBATCH --gres=gpu:1        # GPUs required
 #SBATCH -p general          # partition
 #SBATCH -q class            # QOS
 #SBATCH -A class_cse476spring2025
-#SBATCH --output=api_test_output.log  # Output log file
-#SBATCH --error=api_test_error.log    # Error log file
+#SBATCH --output=api_output_%j.log
+#SBATCH --error=api_error_%j.err
 
 # Load modules
 module load mamba/latest
@@ -25,21 +25,10 @@ source activate $HOME/llama_env
 # Install required packages if not already installed
 pip install flask torch transformers accelerate bitsandbytes requests python-dotenv
 
-# Navigate to the API directory - Full path to avoid errors
-cd $HOME/cse_476_final_proj/sol_code/api
+# Navigate to project directory
+cd $HOME/cse_476_final_proj/sol_code
 
-# Check if model exists before starting
-MODEL_PATH="$HOME/cse_476_final_proj/sol_code/models/llama-3.2-3b-base"
-if [ ! -d "$MODEL_PATH" ] || [ ! -f "$MODEL_PATH/config.json" ] || [ ! -f "$MODEL_PATH/tokenizer.json" ]; then
-    echo "Error: Model files not found at $MODEL_PATH"
-    echo "Please run the download_model.py script first."
-    exit 1
-fi
-
-# Run the API with test
-echo "Starting API with self-test..."
+# Start the Flask API
+export PYTHONPATH=$PYTHONPATH:/home/$USER/cse_476_final_proj/sol_code
+cd api
 python app.py
-
-# Run for 20 minutes, then exit
-sleep 1200
-echo "Test complete. Check api.log for results."

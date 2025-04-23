@@ -1,0 +1,1 @@
+This directory contains the Llama-3.2-3B model fine-tuned as a general instruction-following assistant. 

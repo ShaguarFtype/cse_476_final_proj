@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 import sys
 import time
@@ -8,85 +7,60 @@ import requests
 import threading
 import logging
 
+# Import our model manager
+from model_manager import ModelManager
+
 # Set up logging
 logging.basicConfig(filename='api.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 
-# Global variables for model and tokenizer
-model = None
-tokenizer = None
+# Global variables for model manager
+model_manager = None
 
-def load_model():
-    global model, tokenizer
-
-    # Force offline mode
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-
-    logging.info("Loading the base Llama-3.2-3B model...")
-    model_id = "meta-llama/Llama-3.2-3B"
-
-    # Adjust path to look for locally downloaded model
-    model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "llama-3.2-3b-base"))
-
-    # Check if model exists locally
-    if not os.path.exists(model_path):
-        logging.error(f"Local model path not found: {model_path}")
-        logging.error("Please run the download_model.py script first to download the model.")
-        sys.exit(1)  # Exit with error code
-
-    # Additional verification of model files
-    required_files = ["config.json", "tokenizer.json"]
-    missing_files = [f for f in required_files if not os.path.exists(os.path.join(model_path, f))]
-
-    if missing_files:
-        logging.error(f"Missing required model files: {missing_files}")
-        logging.error("Model download appears incomplete. Please re-run download_model.py.")
-        sys.exit(1)
-
-    logging.info(f"Loading model from local path: {model_path}")
-    try:
-        # Set local_files_only=True to prevent downloading from HF
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_path,
-            local_files_only=True
-        )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            load_in_4bit=True,
-            local_files_only=True
-        )
-        logging.info("Model loaded successfully from local path!")
-    except Exception as e:
-        logging.error(f"Error loading model from local path: {e}")
-        logging.error("Please ensure the model has been properly downloaded.")
-        sys.exit(1)  # Exit with error code
-
-    # Ensure we have a pad token
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+def initialize():
+    global model_manager
+    logging.info("Initializing model manager...")
+    model_manager = ModelManager()
+    # Load the base model by default
+    model_manager.load_model()
+    logging.info("Model manager initialized successfully")
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    if not model or not tokenizer:
-        return jsonify({"error": "Model not loaded"}), 500
-
+    global model_manager
+    
+    if model_manager is None:
+        return jsonify({"error": "Model manager not initialized"}), 500
+    
     data = request.json
     query = data.get("query", "")
+    model_id = data.get("model_id")  # Optional model ID to switch to
+    
     logging.info(f"Received query: {query}")
-
+    
     if not query:
         return jsonify({"error": "Empty query"}), 400
-
+    
+    # Switch model if requested
+    if model_id and model_id != model_manager.current_model_id:
+        try:
+            model, tokenizer = model_manager.load_model(model_id)
+            logging.info(f"Switched to model: {model_id}")
+        except Exception as e:
+            logging.error(f"Error switching models: {e}")
+            return jsonify({"error": f"Error switching models: {str(e)}"}), 500
+    
     # Simple prompt format - works better with base models
     prompt = f"<human>: {query}\n<assistant>: "
 
     # Track response time
     start_time = time.time()
+
+    # Get the current model and tokenizer
+    model = model_manager.current_model
+    tokenizer = model_manager.current_tokenizer
 
     # Generate response
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -130,35 +104,83 @@ def generate():
     response_time = time.time() - start_time
     logging.info(f"Generated response in {response_time:.2f} seconds")
 
+    # Get current model info
+    model_info = model_manager.get_current_model_info()
+    model_name = model_info.get("model_id", "unknown")
+    
     return jsonify({
         "response": response,
         "response_time_seconds": response_time,
-        "model": "Llama-3.2-3B (base)",
+        "model": model_name,
         "status": "success"
     })
 
+@app.route("/models", methods=["GET"])
+def list_models():
+    """List all available models."""
+    if model_manager is None:
+        return jsonify({"error": "Model manager not initialized"}), 500
+    
+    try:
+        models = model_manager.list_available_models()
+        return jsonify({
+            "models": models,
+            "current_model": model_manager.current_model_id or "base"
+        })
+    except Exception as e:
+        logging.error(f"Error listing models: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/models/switch", methods=["POST"])
+def switch_model():
+    """Switch to a different model."""
+    if model_manager is None:
+        return jsonify({"error": "Model manager not initialized"}), 500
+    
+    data = request.json
+    model_id = data.get("model_id")
+    
+    try:
+        model, tokenizer = model_manager.load_model(model_id)
+        return jsonify({
+            "status": "success",
+            "model": model_id or "base",
+            "message": f"Switched to model: {model_id or 'base'}"
+        })
+    except Exception as e:
+        logging.error(f"Error switching models: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/health", methods=["GET"])
 def health_check():
-    if model and tokenizer:
-        return jsonify({
-            "status": "healthy",
-            "model_loaded": True,
-            "model": "Llama-3.2-3B (base)",
-            "device": str(next(model.parameters()).device)
-        })
-    else:
+    if model_manager is None or model_manager.current_model is None:
         return jsonify({"status": "unhealthy", "model_loaded": False})
+    
+    model_info = model_manager.get_current_model_info()
+    
+    return jsonify({
+        "status": "healthy",
+        "model_loaded": True,
+        "model": model_info.get("model_id", "unknown"),
+        "device": str(next(model_manager.current_model.parameters()).device)
+    })
 
 @app.route("/", methods=["GET"])
 def home():
+    model_info = "unknown"
+    if model_manager and model_manager.current_model:
+        model_info = model_manager.get_current_model_info().get("model_id", "unknown")
+    
     return jsonify({
-        "message": "Llama-3.2-3B API is running",
+        "message": "Llama API is running",
         "endpoints": [
             {"path": "/", "method": "GET", "description": "Home page with API information"},
             {"path": "/health", "method": "GET", "description": "Check if the API and model are running properly"},
-            {"path": "/generate", "method": "POST", "description": "Generate a response for a given query"}
+            {"path": "/generate", "method": "POST", "description": "Generate a response for a given query"},
+            {"path": "/models", "method": "GET", "description": "List all available models"},
+            {"path": "/models/switch", "method": "POST", "description": "Switch to a different model"}
         ],
-        "model": "Llama-3.2-3B (base)"
+        "current_model": model_info
     })
 
 def run_self_test():
@@ -182,13 +204,18 @@ def run_self_test():
         logging.info(f"Response: {result['response']}")
         logging.info(f"Response time: {result['response_time_seconds']} seconds")
 
+        # Test models endpoint
+        models_response = requests.get("http://localhost:5000/models")
+        models_data = models_response.json()
+        logging.info(f"Available models: {len(models_data.get('models', []))}")
+        
         logging.info("Self-test completed successfully")
     except Exception as e:
         logging.error(f"Error during self-test: {e}")
 
 if __name__ == "__main__":
     logging.info("Starting API...")
-    load_model()
+    initialize()
 
     # Start self-test in a separate thread
     threading.Thread(target=run_self_test).start()
