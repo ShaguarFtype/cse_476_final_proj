@@ -8,7 +8,9 @@ from transformers import (
     AutoTokenizer,
     Trainer, 
     TrainingArguments,
-    DataCollatorForLanguageModeling
+    DataCollatorForLanguageModeling,
+    LlamaForCausalLM,
+    LlamaConfig
 )
 from datasets import Dataset
 import sys
@@ -26,9 +28,13 @@ def train_model(config):
     """Train a model with the specified configuration."""
     logging.info(f"Starting training with config: {config['model_id']}")
     
-    # Load dataset
-    logging.info(f"Loading dataset from {config['dataset_path']}")
-    with open(config["dataset_path"], 'r') as f:
+    # Load dataset - ensure path is absolute
+    dataset_path = config["dataset_path"]
+    if not os.path.isabs(dataset_path):
+        dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", dataset_path))
+    logging.info(f"Loading dataset from {dataset_path}")
+    
+    with open(dataset_path, 'r') as f:
         data = json.load(f)
     
     logging.info(f"Dataset contains {len(data)} examples")
@@ -37,17 +43,57 @@ def train_model(config):
     model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", config["base_model_path"]))
     logging.info(f"Loading base model from {model_path}")
     
-    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    # Load tokenizer with basic settings
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+            logging.info("Setting pad_token to eos_token")
+    except Exception as e:
+        logging.error(f"Error loading tokenizer: {e}")
+        raise
     
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        load_in_4bit=True,
-        local_files_only=True
-    )
+    # Load model with proper handling for Llama 3's GQA architecture
+    try:
+        # First, manually load and fix the configuration
+        # Load the raw config file
+        config_path = os.path.join(model_path, "config.json")
+        with open(config_path, 'r') as f:
+            raw_config = json.load(f)
+        
+        # Fix the rope_scaling format before creating the config object
+        if "rope_scaling" in raw_config:
+            logging.info(f"Original rope_scaling: {raw_config['rope_scaling']}")
+            raw_config["rope_scaling"] = {
+                "type": "dynamic",
+                "factor": raw_config["rope_scaling"].get("factor", 32.0)
+            }
+            logging.info(f"Updated rope_scaling: {raw_config['rope_scaling']}")
+            
+            # Save the modified config temporarily
+            temp_config_path = os.path.join(model_path, "config_fixed.json")
+            with open(temp_config_path, 'w') as f:
+                json.dump(raw_config, f)
+            
+            # Load the fixed config
+            model_config = LlamaConfig.from_pretrained(temp_config_path, local_files_only=True)
+            os.remove(temp_config_path)  # Clean up
+        else:
+            model_config = LlamaConfig.from_pretrained(model_path, local_files_only=True)
+        
+        # Log the current configuration for debugging
+        logging.info(f"Model config: num_attention_heads={model_config.num_attention_heads}, num_key_value_heads={model_config.num_key_value_heads}")
+        
+        # Load the model with the fixed configuration
+        model = LlamaForCausalLM.from_pretrained(
+            model_path,
+            config=model_config,
+            local_files_only=True,
+            torch_dtype=torch.float16
+        )
+    except Exception as e:
+        logging.error(f"Error loading model: {e}")
+        raise
     
     # Format examples with prompt template
     def create_prompt(example):

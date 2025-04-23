@@ -1,0 +1,11 @@
+model_id: "devdata-tuned"
+description: "Llama-3.2-3B model fine-tuned on the development dataset"
+base_model_path: "models/base/llama-3.2-3b-base"
+dataset_path: "data/processed/devdata_instruction.json"
+output_dir: "models/variants/devdata-tuned"
+format_type: "instruction"
+batch_size: 1
+gradient_accumulation: 8
+learning_rate: 2e-5
+epochs: 3
+max_length: 512

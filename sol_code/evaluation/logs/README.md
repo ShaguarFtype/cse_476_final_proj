@@ -1,1 +1,0 @@
-Evaluation job logs are stored in this directory. 

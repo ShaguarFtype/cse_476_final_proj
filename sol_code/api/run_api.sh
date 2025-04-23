@@ -7,8 +7,8 @@
 #SBATCH -p general          # partition
 #SBATCH -q class            # QOS
 #SBATCH -A class_cse476spring2025
-#SBATCH --output=api_output_%j.log
-#SBATCH --error=api_error_%j.err
+#SBATCH --output=logs/api/api_output_%j.log
+#SBATCH --error=logs/api/api_error_%j.err
 
 # Load modules
 module load mamba/latest
