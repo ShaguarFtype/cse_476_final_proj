@@ -43,7 +43,7 @@ rm -rf sol_code/logs/training/*
 if [ ! -f sol_code/data/processed/devdata_instruction.json ]; then
     echo "Processing dev data..."
     mkdir -p sol_code/data/processed
-    python sol_code/data/process_math_data.py --input_file sol_code/data/raw/dev_data.json --output_file sol_code/data/processed/devdata_instruction.json
+    python sol_code/data/process_devdata.py --input_file sol_code/data/raw/dev_data.json --output_file sol_code/data/processed/devdata_instruction.json
 fi
 
 # Create config file for this training run
