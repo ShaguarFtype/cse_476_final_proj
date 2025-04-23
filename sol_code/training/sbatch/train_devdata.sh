@@ -23,6 +23,7 @@ source activate $ENV_PATH
 pip install 'numpy<2.0.0' --no-deps  # Install numpy 1.x
 pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 pip install transformers==4.36.0 datasets==2.16.0
+pip install accelerate>=0.20.1  # Add accelerate package
 
 # Navigate to project directory
 cd $HOME/cse_476_final_proj
@@ -37,7 +38,6 @@ fi
 
 # Create logs directory if it doesn't exist
 mkdir -p sol_code/logs/training
-rm -rf sol_code/logs/training/*
 
 # First, process the data if it doesn't exist
 if [ ! -f sol_code/data/processed/devdata_instruction.json ]; then
