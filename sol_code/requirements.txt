@@ -1,59 +1,39 @@
-accelerate==1.6.0
-bitsandbytes==0.45.5
-blinker==1.9.0
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1725267488082/work
-certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1739515848642/work/certifi
-cffi @ file:///home/conda/feedstock_root/build_artifacts/cffi_1725560520483/work
-charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1735929714516/work
-click==8.1.8
-filelock==3.18.0
-Flask==3.1.0
-fsspec==2025.3.2
-h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1738578511449/work
-hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1737618293087/work
-huggingface-hub==0.30.1
-hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1737618333194/work
-idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1733211830134/work
-itsdangerous==2.2.0
-Jinja2==3.1.6
-MarkupSafe==3.0.2
-mpmath==1.3.0
-networkx==3.4.2
-numpy @ file:///home/conda/feedstock_root/build_artifacts/numpy_1742254824252/work/dist/numpy-2.2.4-cp310-cp310-linux_x86_64.whl#sha256=89bf69a84640f36d25198a479bdb3885a47026a4604a6e700781b7b89b023bd8
-nvidia-cublas-cu12==12.4.5.8
-nvidia-cuda-cupti-cu12==12.4.127
-nvidia-cuda-nvrtc-cu12==12.4.127
-nvidia-cuda-runtime-cu12==12.4.127
-nvidia-cudnn-cu12==9.1.0.70
-nvidia-cufft-cu12==11.2.1.3
-nvidia-curand-cu12==10.3.5.147
-nvidia-cusolver-cu12==11.6.1.9
-nvidia-cusparse-cu12==12.3.1.170
-nvidia-cusparselt-cu12==0.6.2
-nvidia-nccl-cu12==2.21.5
-nvidia-nvjitlink-cu12==12.4.127
-nvidia-nvtx-cu12==12.4.127
-packaging==24.2
-pandas @ file:///home/conda/feedstock_root/build_artifacts/pandas_1726878398774/work
-psutil==7.0.0
-pycparser @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pycparser_1733195786/work
-PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/python-dateutil_1733215673016/work
+accelerate==0.25.0
+datasets==2.14.6
+evaluate==0.4.1
+peft==0.6.2
+scipy==1.11.3
+sentencepiece==0.1.99
+tensorboard==2.14.1
+torch==2.1.0
+transformers==4.35.2
+bitsandbytes==0.41.1
+tqdm==4.66.1
+wandb==0.16.0
+safetensors==0.4.0
+tiktoken==0.5.1
+torch==2.0.1
+transformers==4.28.1
+accelerate==0.20.3
+huggingface_hub==0.14.1
+trl==0.4.7
+peft==0.4.0
+bitsandbytes==0.39.0
+# Other essential libraries
 python-dotenv==1.1.0
-pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1706886791323/work
-PyYAML==6.0.2
-regex==2024.11.6
-requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1733217035951/work
-safetensors==0.5.3
-six @ file:///home/conda/feedstock_root/build_artifacts/six_1733380938961/work
-sympy==1.13.1
-tokenizers==0.21.1
-torch==2.6.0
-tqdm==4.67.1
-transformers==4.51.0
-triton==3.2.0
-typing_extensions==4.13.1
-tzdata @ file:///home/conda/feedstock_root/build_artifacts/python-tzdata_1742745135198/work
-urllib3 @ file:///home/conda/feedstock_root/build_artifacts/urllib3_1734859416348/work
-Werkzeug==3.1.3
-zstandard==0.23.0
+datasets>=2.12.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+safetensors==0.3.1
+tokenizers==0.13.3
+numpy>=1.23.0
+pandas>=1.5.3
+tqdm>=4.65.0
+# File handling
+filelock==3.12.0
+fsspec>=2023.5.0
+PyYAML==6.0
+regex>=2023.5.5
+# System utilities
+psutil>=5.9.5
+typing_extensions>=4.5

@@ -1,0 +1,23 @@
+model_id: "enhanced-reasoning-assistant"
+description: "Enhanced reasoning assistant with chain-of-thought training"
+base_model_path: "models/base/llama-3.2-3b-base"
+output_dir: "models/variants/enhanced-reasoning-assistant"
+dataset_path: "data/processed/reasoning_cot.json"
+format_type: "instruction"
+
+# Training parameters
+batch_size: 1
+gradient_accumulation: 8
+learning_rate: 2e-5
+epochs: 3
+max_length: 1024
+lr_scheduler: "cosine"
+warmup_steps: 100
+weight_decay: 0.01
+
+# LoRA parameters
+use_4bit: true
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
